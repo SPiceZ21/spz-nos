@@ -281,28 +281,39 @@ ParticleDict = "veh_xs_vehicle_mods"
 ParticleFx = "veh_nitrous"
 ParticleSize = 1.3
 
+-- Preload PTFX once at startup so the flame loop never blocks
+CreateThread(function()
+    RequestNamedPtfxAsset(ParticleDict)
+    while not HasNamedPtfxAssetLoaded(ParticleDict) do
+        Wait(100)
+    end
+end)
+
+local _lastFlameSync = 0
+
 CreateThread(function()
     while true do
-        if NitrousActivated then
+        if not NitrousActivated then
+            Wait(300)
+        else
             local veh = GetVehiclePedIsIn(PlayerPedId())
             if veh ~= 0 then
-                TriggerServerEvent('nitrous:server:SyncFlames', VehToNet(veh))
-                for _,bones in pairs(p_flame_location) do
+                local now = GetGameTimer()
+                if now - _lastFlameSync >= 100 then
+                    _lastFlameSync = now
+                    TriggerServerEvent('nitrous:server:SyncFlames', VehToNet(veh))
+                end
+                for _, bones in pairs(p_flame_location) do
                     if GetEntityBoneIndexByName(veh, bones) ~= -1 then
                         if Fxs[bones] == nil then
-                            RequestNamedPtfxAsset(ParticleDict)
-                            while not HasNamedPtfxAssetLoaded(ParticleDict) do
-                                Wait(0)
-                            end
-                            SetPtfxAssetNextCall(ParticleDict)
                             UseParticleFxAssetNextCall(ParticleDict)
                             Fxs[bones] = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
                         end
                     end
                 end
             end
+            Wait(75)
         end
-        Wait(20)
     end
 end)
 
@@ -310,28 +321,21 @@ local NOSPFX = {}
 
 RegisterNetEvent('nitrous:client:SyncFlames', function(netid, nosid)
     local veh = NetToVeh(netid)
-    if veh ~= 0 then
-        local myid = GetPlayerServerId(PlayerId())
-        if NOSPFX[trim(GetVehicleNumberPlateText(veh))] == nil then
-            NOSPFX[trim(GetVehicleNumberPlateText(veh))] = {}
-        end
-        if myid ~= nosid then
-            for _,bones in pairs(p_flame_location) do
-                if NOSPFX[trim(GetVehicleNumberPlateText(veh))][bones] == nil then
-                    NOSPFX[trim(GetVehicleNumberPlateText(veh))][bones] = {}
-                end
-                if GetEntityBoneIndexByName(veh, bones) ~= -1 then
-                    if NOSPFX[trim(GetVehicleNumberPlateText(veh))][bones].pfx == nil then
-                        RequestNamedPtfxAsset(ParticleDict)
-                        while not HasNamedPtfxAssetLoaded(ParticleDict) do
-                            Wait(0)
-                        end
-                        SetPtfxAssetNextCall(ParticleDict)
-                        UseParticleFxAssetNextCall(ParticleDict)
-                        NOSPFX[trim(GetVehicleNumberPlateText(veh))][bones].pfx = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
+    if veh == 0 then return end
+    if not HasNamedPtfxAssetLoaded(ParticleDict) then return end
 
-                    end
-                end
+    local myid = GetPlayerServerId(PlayerId())
+    if myid == nosid then return end
+
+    local plate = trim(GetVehicleNumberPlateText(veh))
+    if NOSPFX[plate] == nil then NOSPFX[plate] = {} end
+
+    for _, bones in pairs(p_flame_location) do
+        if NOSPFX[plate][bones] == nil then NOSPFX[plate][bones] = {} end
+        if GetEntityBoneIndexByName(veh, bones) ~= -1 then
+            if NOSPFX[plate][bones].pfx == nil then
+                UseParticleFxAssetNextCall(ParticleDict)
+                NOSPFX[plate][bones].pfx = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
             end
         end
     end
