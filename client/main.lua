@@ -4,6 +4,8 @@ local Fxs = {}
 local purgeflowrate = 0.1
 local nitroflowrate = 1.0
 local NitrousActivated = false
+local NitroSoundId = -1
+local PurgeSoundId = -1
 local PurgeMode = false
 local NitroMode = true
 
@@ -87,10 +89,22 @@ RegisterCommand('-activateNos', function()
         SetVehicleEnginePowerMultiplier(veh, 1.0)
         SetVehicleEngineTorqueMultiplier(veh, 1.0)
         SetVehicleNitroPurgeEnabled(veh, false)
-        for index,_ in pairs(Fxs) do
+        for index, _ in pairs(Fxs) do
             StopParticleFxLooped(Fxs[index], 1)
-            TriggerServerEvent('nitrous:server:StopSync', trim(GetVehicleNumberPlateText(veh)))
             Fxs[index] = nil
+        end
+        TriggerServerEvent('nitrous:server:StopSync', trim(GetVehicleNumberPlateText(veh)))
+        
+        -- Sound Cleanup
+        if NitroSoundId ~= -1 then
+            StopSound(NitroSoundId)
+            ReleaseSoundId(NitroSoundId)
+            NitroSoundId = -1
+        end
+        if PurgeSoundId ~= -1 then
+            StopSound(PurgeSoundId)
+            ReleaseSoundId(PurgeSoundId)
+            PurgeSoundId = -1
         end
     end
 end, false)
@@ -163,6 +177,12 @@ CreateThread(function()
                             local boostMult = 1.0 + nitroflowrate
                             SetVehicleEnginePowerMultiplier(CurrentVehicle, boostMult)
                             SetVehicleEngineTorqueMultiplier(CurrentVehicle, boostMult)
+
+                            -- Sound Management
+                            if NitroSoundId == -1 then
+                                NitroSoundId = GetSoundId()
+                                PlaySoundFromEntity(NitroSoundId, "Remote_Control_Homing_Missile_Loop", CurrentVehicle, "DLC_HEIST_BIOLAB_PREP_SOUNDS", true, 0)
+                            end
                             
                             local consumption = 0.3 * nitroflowrate
                             VehicleNitrous[Plate].level = VehicleNitrous[Plate].level - consumption
@@ -179,6 +199,12 @@ CreateThread(function()
                         if VehicleNitrous[Plate].level > 0 then
                             SetVehicleBoostActive(CurrentVehicle, 1)
                             SetVehicleNitroPurgeEnabled(CurrentVehicle, true)
+
+                            -- Purge Sound
+                            if PurgeSoundId == -1 then
+                                PurgeSoundId = GetSoundId()
+                                PlaySoundFromEntity(PurgeSoundId, "Nitrous_Filling", CurrentVehicle, "DLC_HEIST_BIOLAB_PREP_SOUNDS", true, 0)
+                            end
                             
                             local consumption = 1.5 * (purgeflowrate * 10)
                             VehicleNitrous[Plate].level = VehicleNitrous[Plate].level - (consumption / 10)
@@ -193,6 +219,20 @@ CreateThread(function()
                         else
                             SetVehicleNitroPurgeEnabled(CurrentVehicle, false)
                         end
+                    end
+                end
+
+                -- Global sound cleanup if not active
+                if not NitrousActivated or not ActiveKey then
+                    if NitroSoundId ~= -1 then
+                        StopSound(NitroSoundId)
+                        ReleaseSoundId(NitroSoundId)
+                        NitroSoundId = -1
+                    end
+                    if PurgeSoundId ~= -1 then
+                        StopSound(PurgeSoundId)
+                        ReleaseSoundId(PurgeSoundId)
+                        PurgeSoundId = -1
                     end
                 end
                 nosupdated = false
@@ -232,8 +272,8 @@ function SetVehicleNitroPurgeEnabled(vehicle, enabled)
       local ptfxs = {}
   
       for i=0,1 do
-        local leftPurge = CreateVehiclePurgeSpray(vehicle, offleft.x - 0.1, offleft.y + 0.5, offleft.z + 0.05, 30.0, -50.0, 0.5, purgeflowrate)
-        local rightPurge = CreateVehiclePurgeSpray(vehicle, offright.x + 0.1, offright.y + 0.5, offright.z + 0.05, 30.0, 50.0, 0.5, purgeflowrate)
+        local leftPurge = CreateVehiclePurgeSpray(vehicle, offleft.x - 0.1, offleft.y + 0.5, offleft.z + 0.05, 30.0, -50.0, 0.5, (purgeflowrate * 1.5) + 0.2)
+        local rightPurge = CreateVehiclePurgeSpray(vehicle, offright.x + 0.1, offright.y + 0.5, offright.z + 0.05, 30.0, 50.0, 0.5, (purgeflowrate * 1.5) + 0.2)
   
         table.insert(ptfxs, leftPurge)
         table.insert(ptfxs, rightPurge)
@@ -281,9 +321,10 @@ ParticleDict = "veh_xs_vehicle_mods"
 ParticleFx = "veh_nitrous"
 ParticleSize = 1.3
 
--- Preload PTFX once at startup so the flame loop never blocks
+-- Preload PTFX and Audio once at startup
 CreateThread(function()
     RequestNamedPtfxAsset(ParticleDict)
+    RequestScriptAudioBank("DLC_HEIST_BIOLAB_PREP_SOUNDS", false)
     while not HasNamedPtfxAssetLoaded(ParticleDict) do
         Wait(100)
     end
@@ -308,6 +349,10 @@ CreateThread(function()
                         if Fxs[bones] == nil then
                             UseParticleFxAssetNextCall(ParticleDict)
                             Fxs[bones] = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
+                            
+                            -- Additional Smoke Particle
+                            UseParticleFxAssetNextCall("core")
+                            Fxs[bones .. "_smoke"] = StartParticleFxLoopedOnEntityBone("ent_sht_steam", veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), 0.5, 0.0, 0.0, 0.0)
                         end
                     end
                 end
@@ -336,6 +381,10 @@ RegisterNetEvent('nitrous:client:SyncFlames', function(netid, nosid)
             if NOSPFX[plate][bones].pfx == nil then
                 UseParticleFxAssetNextCall(ParticleDict)
                 NOSPFX[plate][bones].pfx = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
+                
+                -- Sync Smoke
+                UseParticleFxAssetNextCall("core")
+                NOSPFX[plate][bones].smoke = StartParticleFxLoopedOnEntityBone("ent_sht_steam", veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), 0.5, 0.0, 0.0, 0.0)
             end
         end
     end
@@ -344,8 +393,10 @@ end)
 RegisterNetEvent('nitrous:client:StopSync', function(plate)
     if NOSPFX[plate] then
         for k, v in pairs(NOSPFX[plate]) do
-            StopParticleFxLooped(v.pfx, 1)
+            if v.pfx then StopParticleFxLooped(v.pfx, 1) end
+            if v.smoke then StopParticleFxLooped(v.smoke, 1) end
             NOSPFX[plate][k].pfx = nil
+            NOSPFX[plate][k].smoke = nil
         end
     end
 end)
@@ -388,7 +439,8 @@ exports('GetNosData', function()
                 level = VehicleNitrous[Plate].level,
                 purgeLevel = VehicleNitrous[Plate].level, -- Shared for now
                 mode = NitroMode and "nitro" or "purge",
-                flowRate = NitroMode and nitroflowrate or purgeflowrate
+                flowRate = NitroMode and nitroflowrate or purgeflowrate,
+                isActive = NitrousActivated
             }
         end
     end
