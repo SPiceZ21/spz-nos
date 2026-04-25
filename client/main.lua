@@ -263,21 +263,20 @@ function SetVehicleNitroPurgeEnabled(vehicle, enabled)
     end
   
     if enabled then
-      local boneleft = GetEntityBoneIndexByName(vehicle, 'wheel_lf')
-      local posleft = GetWorldPositionOfEntityBone(vehicle, boneleft)
-      local offleft = GetOffsetFromEntityGivenWorldCoords(vehicle, posleft.x, posleft.y, posleft.z)
-      local boneright = GetEntityBoneIndexByName(vehicle, 'wheel_rf')
-      local posright = GetWorldPositionOfEntityBone(vehicle, boneright)
-      local offright = GetOffsetFromEntityGivenWorldCoords(vehicle, posright.x, posright.y, posright.z)
+      local bone = GetEntityBoneIndexByName(vehicle, 'bonnet')
+      if bone == -1 then bone = GetEntityBoneIndexByName(vehicle, 'engine') end
+      if bone == -1 then bone = 0 end -- Fallback to root if no bone found
+      
       local ptfxs = {}
-  
-      for i=0,1 do
-        local leftPurge = CreateVehiclePurgeSpray(vehicle, offleft.x - 0.1, offleft.y + 0.5, offleft.z + 0.05, 30.0, -50.0, 0.5, (purgeflowrate * 1.5) + 0.2)
-        local rightPurge = CreateVehiclePurgeSpray(vehicle, offright.x + 0.1, offright.y + 0.5, offright.z + 0.05, 30.0, 50.0, 0.5, (purgeflowrate * 1.5) + 0.2)
-  
-        table.insert(ptfxs, leftPurge)
-        table.insert(ptfxs, rightPurge)
-      end
+      
+      -- Define purge points relative to bonnet/engine
+      -- 1. Main hood vents (left/right)
+      table.insert(ptfxs, CreateVehiclePurgeSpray(vehicle, -0.3, 0.2, 0.1, 40.0, -20.0, 0.0, (purgeflowrate * 1.5) + 0.2, bone))
+      table.insert(ptfxs, CreateVehiclePurgeSpray(vehicle, 0.3, 0.2, 0.1, 40.0, 20.0, 0.0, (purgeflowrate * 1.5) + 0.2, bone))
+      
+      -- 2. Windshield cowl base (closer to center/windshield)
+      table.insert(ptfxs, CreateVehiclePurgeSpray(vehicle, -0.15, -0.1, 0.15, 60.0, -10.0, 0.0, (purgeflowrate * 1.2) + 0.2, bone))
+      table.insert(ptfxs, CreateVehiclePurgeSpray(vehicle, 0.15, -0.1, 0.15, 60.0, 10.0, 0.0, (purgeflowrate * 1.2) + 0.2, bone))
   
       vehicles[vehicle] = true
       particles[vehicle] = ptfxs
@@ -293,10 +292,10 @@ function SetVehicleNitroPurgeEnabled(vehicle, enabled)
     end
 end
 
-function CreateVehiclePurgeSpray(vehicle, xOffset, yOffset, zOffset, xRot, yRot, zRot, scale)
+function CreateVehiclePurgeSpray(vehicle, xOffset, yOffset, zOffset, xRot, yRot, zRot, scale, bone)
     UseParticleFxAssetNextCall('core')
-    return StartParticleFxLoopedOnEntity('ent_sht_steam', vehicle, xOffset, yOffset, zOffset, xRot, yRot, zRot, scale, false, false, false)
-  end
+    return StartParticleFxLoopedOnEntityBone('ent_sht_steam', vehicle, xOffset, yOffset, zOffset, xRot, yRot, zRot, bone, scale, false, false, false)
+end
 
 p_flame_location = {
 	"exhaust",
@@ -349,10 +348,6 @@ CreateThread(function()
                         if Fxs[bones] == nil then
                             UseParticleFxAssetNextCall(ParticleDict)
                             Fxs[bones] = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
-                            
-                            -- Additional Smoke Particle
-                            UseParticleFxAssetNextCall("core")
-                            Fxs[bones .. "_smoke"] = StartParticleFxLoopedOnEntityBone("ent_sht_steam", veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), 0.5, 0.0, 0.0, 0.0)
                         end
                     end
                 end
@@ -381,10 +376,6 @@ RegisterNetEvent('nitrous:client:SyncFlames', function(netid, nosid)
             if NOSPFX[plate][bones].pfx == nil then
                 UseParticleFxAssetNextCall(ParticleDict)
                 NOSPFX[plate][bones].pfx = StartParticleFxLoopedOnEntityBone(ParticleFx, veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), ParticleSize, 0.0, 0.0, 0.0)
-                
-                -- Sync Smoke
-                UseParticleFxAssetNextCall("core")
-                NOSPFX[plate][bones].smoke = StartParticleFxLoopedOnEntityBone("ent_sht_steam", veh, 0.0, -0.05, 0.0, 0.0, 0.0, 0.0, GetEntityBoneIndexByName(veh, bones), 0.5, 0.0, 0.0, 0.0)
             end
         end
     end
@@ -394,9 +385,7 @@ RegisterNetEvent('nitrous:client:StopSync', function(plate)
     if NOSPFX[plate] then
         for k, v in pairs(NOSPFX[plate]) do
             if v.pfx then StopParticleFxLooped(v.pfx, 1) end
-            if v.smoke then StopParticleFxLooped(v.smoke, 1) end
             NOSPFX[plate][k].pfx = nil
-            NOSPFX[plate][k].smoke = nil
         end
     end
 end)
