@@ -2,7 +2,7 @@ fx_version 'cerulean'
 game 'gta5'
 
 description 'SPiceZ Nitrous System'
-version '1.0.0'
+version '1.0.5'
 
 client_script 'client/main.lua'
 
