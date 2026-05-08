@@ -28,35 +28,7 @@ RegisterNetEvent('nitrous:client:GetNosLoadedVehs', function(vehs)
 end)
 
 -- Command to install/refill NOS (No item required as per user request)
-RegisterCommand('nos', function()
-    local ped = PlayerPedId()
-    local veh = GetVehiclePedIsIn(ped)
 
-    if veh ~= 0 then
-        if GetPedInVehicleSeat(veh, -1) == ped then
-            if not NitrousActivated then
-                -- Optional: Check for Turbo if you want to keep that restriction
-                -- if IsToggleModOn(veh, 18) then
-                    Notify("Installing Nitrous System...", "info")
-                    -- Simple wait for installation
-                    Citizen.Wait(2000) 
-                    
-                    local Plate = trim(GetVehicleNumberPlateText(veh))
-                    TriggerServerEvent('nitrous:server:LoadNitrous', Plate)
-                    Notify("Nitrous System Installed/Refilled", "success")
-                -- else
-                --     Notify("Vehicle needs a Turbo to use NOS!", "error")
-                -- end
-            else
-                Notify("NOS is already active!", "error")
-            end
-        else
-            Notify("You must be the driver!", "error")
-        end
-    else
-        Notify("You are not in a vehicle!", "error")
-    end
-end)
 
 -- Event to install NOS (Simplified)
 RegisterNetEvent('spz-nos:client:LoadNitrous', function()
@@ -142,10 +114,17 @@ CreateThread(function()
     while true do
         local ped = PlayerPedId()
         local CurrentVehicle = GetVehiclePedIsIn(ped)
-        if CurrentVehicle ~= 0 then
+        if CurrentVehicle ~= 0 and GetPedInVehicleSeat(CurrentVehicle, -1) == ped then
             local Plate = trim(GetVehicleNumberPlateText(CurrentVehicle))
+            
+            -- Auto-install NOS if vehicle doesn't have it
+            if VehicleNitrous[Plate] == nil then
+                TriggerServerEvent('nitrous:server:LoadNitrous', Plate)
+                Wait(500) -- Wait for sync
+            end
+
             if VehicleNitrous[Plate] ~= nil and VehicleNitrous[Plate].hasnitro then
-                -- Contextual Mode Selection (Always update for UI)
+                -- Contextual Mode Selection
                 if IsControlPressed(0, 71) then -- W (Accelerate)
                     NitroMode = true
                     PurgeMode = false
@@ -190,9 +169,6 @@ CreateThread(function()
                             if VehicleNitrous[Plate].level <= 0 then
                                 VehicleNitrous[Plate].level = 0
                                 ExecuteCommand('-activateNos')
-                                TriggerServerEvent('nitrous:server:UnloadNitrous', Plate)
-                            else
-                                TriggerServerEvent('nitrous:server:UpdateNitroLevel', Plate, VehicleNitrous[Plate].level)
                             end
                         end
                     elseif PurgeMode then
@@ -212,14 +188,21 @@ CreateThread(function()
                             if VehicleNitrous[Plate].level <= 0 then
                                 VehicleNitrous[Plate].level = 0
                                 ExecuteCommand('-activateNos')
-                                TriggerServerEvent('nitrous:server:UnloadNitrous', Plate)
-                            else
-                                TriggerServerEvent('nitrous:server:UpdateNitroLevel', Plate, VehicleNitrous[Plate].level)
                             end
                         else
                             SetVehicleNitroPurgeEnabled(CurrentVehicle, false)
                         end
                     end
+                else
+                    -- Auto-regain logic (refill when not in use)
+                    if VehicleNitrous[Plate].level < 100 then
+                        VehicleNitrous[Plate].level = math.min(100, VehicleNitrous[Plate].level + 0.5)
+                    end
+                end
+
+                -- Sync level to server occasionally or when stopped
+                if not ActiveKey or VehicleNitrous[Plate].level <= 0 then
+                    TriggerServerEvent('nitrous:server:UpdateNitroLevel', Plate, VehicleNitrous[Plate].level)
                 end
 
                 -- Global sound cleanup if not active
@@ -236,10 +219,6 @@ CreateThread(function()
                     end
                 end
                 nosupdated = false
-            else
-                if not nosupdated then
-                    nosupdated = true
-                end
             end
         else
             Wait(1000)
