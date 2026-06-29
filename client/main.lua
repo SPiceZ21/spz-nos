@@ -10,7 +10,7 @@ local PurgeMode = false
 local NitroMode = true
 
 local function Notify(msg, type)
-    exports["spz-lib"]:Notify(msg, type or "info")
+    lib.notify({ description = msg, type = type or "info" })
 end
 
 local function trim(value)
